@@ -12,12 +12,17 @@
 #define ANGLE_STEP      10    // degrees per button press
 #define POWER_STEP       5    // power % per button press
 
-// Play area in basalt/aplite coordinate space (7,17)-(137,155)
-#define PX               7
-#define PY              17
+// Play area in basalt/aplite coordinate space
 #define PW             130
 #define PH             138
 #define HUD_H           16
+
+// Persistent storage keys
+#define PKEY_BEST_18     1    // best total strokes on 18-hole
+#define PKEY_BEST_9      2    // best total strokes on 9-hole
+#define PKEY_SAVE_EXISTS 10   // bool: saved game present
+#define PKEY_SAVE_HOLE   11   // int: hole index to resume
+#define PKEY_SAVE_SCORES 12   // data: int8_t s_scores[18]
 
 // ---- Types ----
 typedef enum {
@@ -38,8 +43,6 @@ typedef struct {
 } HoleData;
 
 // ---- 18 Hole Definitions (play-area-relative coords, 0-129 x, 0-137 y) ----
-// Tee is where the ball starts, cup is the hole.
-// Walls are internal obstacles only; outer boundary is enforced by code.
 static const HoleData s_holes[18] = {
   // 1: Open straight — par 2
   { {65,120}, {65,18}, 2, 0, {} },
@@ -48,7 +51,7 @@ static const HoleData s_holes[18] = {
   { {65,120}, {65,18}, 2, 1,
     { {{30,72},{100,72}} } },
 
-  // 3: Narrow slot — par 2 (two walls, gap in the middle)
+  // 3: Narrow slot — par 2
   { {65,120}, {65,18}, 2, 2,
     { {{4,80},{50,80}}, {{80,80},{126,80}} } },
 
@@ -97,7 +100,7 @@ static const HoleData s_holes[18] = {
   { {65,120}, {65,18}, 3, 3,
     { {{4,100},{65,100}}, {{65,70},{126,70}}, {{4,40},{65,40}} } },
 
-  // 15: Bank shot (must bounce off wall) — par 2
+  // 15: Bank shot — par 2
   { {20,120}, {20,18}, 2, 1,
     { {{4,70},{90,70}} } },
 
@@ -125,7 +128,7 @@ static GameState  s_state;
 static bool       s_random_mode;
 static int        s_current_hole;
 static int        s_total_holes;
-static int8_t     s_scores[18];   // strokes per hole
+static int8_t     s_scores[18];   // strokes per hole (-1 = not played)
 static int        s_strokes;      // strokes on current hole
 
 // Ball physics (fixed-point, play-area coords × FP)
@@ -142,8 +145,13 @@ static HoleData s_proc_holes[9];
 // Current hole pointer
 static const HoleData *s_cur_hole;
 
-// Play area screen offset (adjusted for platform)
+// Play area screen offset
 static int s_px, s_py;
+
+// Persistent / best scores
+static int  s_best_18;   // 0 = no record
+static int  s_best_9;
+static bool s_has_save;  // 18-hole game in progress
 
 // ---- Helpers ----
 static GPoint to_screen(GPoint p) {
@@ -151,6 +159,47 @@ static GPoint to_screen(GPoint p) {
 }
 
 static int32_t iabs32(int32_t v) { return v < 0 ? -v : v; }
+
+// ---- Persistent Storage ----
+static void load_persistent_data(void) {
+  s_best_18  = persist_read_int(PKEY_BEST_18);
+  s_best_9   = persist_read_int(PKEY_BEST_9);
+  s_has_save = persist_read_bool(PKEY_SAVE_EXISTS);
+}
+
+static void save_game_progress(void) {
+  if (s_random_mode) return;  // random mode doesn't save
+  persist_write_bool(PKEY_SAVE_EXISTS, true);
+  persist_write_int(PKEY_SAVE_HOLE, s_current_hole);
+  persist_write_data(PKEY_SAVE_SCORES, s_scores, sizeof(s_scores));
+  s_has_save = true;
+}
+
+static void clear_saved_game(void) {
+  persist_delete(PKEY_SAVE_EXISTS);
+  persist_delete(PKEY_SAVE_HOLE);
+  persist_delete(PKEY_SAVE_SCORES);
+  s_has_save = false;
+}
+
+static void check_and_save_best(void) {
+  int total = 0;
+  for (int i = 0; i < s_total_holes; i++) {
+    if (s_scores[i] >= 0) total += s_scores[i];
+  }
+  if (s_random_mode) {
+    if (s_best_9 == 0 || total < s_best_9) {
+      s_best_9 = total;
+      persist_write_int(PKEY_BEST_9, total);
+    }
+  } else {
+    if (s_best_18 == 0 || total < s_best_18) {
+      s_best_18 = total;
+      persist_write_int(PKEY_BEST_18, total);
+    }
+    clear_saved_game();
+  }
+}
 
 // ---- Procedural Generation ----
 static uint32_t s_rand_seed;
@@ -170,18 +219,13 @@ static void generate_proc_holes(void) {
   s_rand_seed = (uint32_t)time(NULL);
   for (int i = 0; i < 9; i++) {
     HoleData *h = &s_proc_holes[i];
-    // Tee in top-left region, cup in bottom-right region
     h->tee.x = (int16_t)rand_range(10, 50);
     h->tee.y = (int16_t)rand_range(10, 50);
     h->cup.x = (int16_t)rand_range(75, 120);
     h->cup.y = (int16_t)rand_range(85, 128);
-    // Guarantee minimum distance
     int dx = h->cup.x - h->tee.x;
     int dy = h->cup.y - h->tee.y;
-    if (dx*dx + dy*dy < 4000) {
-      h->cup.x = 110; h->cup.y = 120;
-    }
-    // Random 1–3 walls
+    if (dx*dx + dy*dy < 4000) { h->cup.x = 110; h->cup.y = 120; }
     int nw = rand_range(1, 3);
     h->num_walls = (uint8_t)nw;
     h->par = (uint8_t)((dx*dx + dy*dy > 6000 || nw >= 3) ? 3 : 2);
@@ -197,7 +241,6 @@ static void generate_proc_holes(void) {
         h->walls[w][1] = GPoint(cx, cy + len/2);
       }
     }
-    // Zero remaining wall slots
     for (int w = nw; w < MAX_WALLS; w++) {
       h->walls[w][0] = GPointZero;
       h->walls[w][1] = GPointZero;
@@ -228,28 +271,22 @@ static bool segments_cross(int ax, int ay, int bx, int by,
 static void reflect_off_wall(GPoint w1, GPoint w2) {
   int wx = w2.x - w1.x;
   int wy = w2.y - w1.y;
-  int nx = -wy;
-  int ny = wx;
+  int nx = -wy, ny = wx;
   int len_sq = nx*nx + ny*ny;
   if (len_sq == 0) return;
   int32_t dot = (int32_t)s_vx * nx + (int32_t)s_vy * ny;
   s_vx -= (int32_t)2 * dot * nx / len_sq;
   s_vy -= (int32_t)2 * dot * ny / len_sq;
-  // Dampen slightly on bounce
   s_vx = s_vx * 7 / 8;
   s_vy = s_vy * 7 / 8;
 }
 
-// Outer boundary segments in play-area coords
 static const GPoint s_boundary[4][2] = {
-  {{0,0},{PW,0}},
-  {{PW,0},{PW,PH}},
-  {{PW,PH},{0,PH}},
-  {{0,PH},{0,0}},
+  {{0,0},{PW,0}}, {{PW,0},{PW,PH}},
+  {{PW,PH},{0,PH}}, {{0,PH},{0,0}},
 };
 
 static void check_collisions(int ox, int oy, int nx, int ny) {
-  // Outer boundary
   for (int i = 0; i < 4; i++) {
     if (segments_cross(ox, oy, nx, ny,
                        s_boundary[i][0].x, s_boundary[i][0].y,
@@ -258,7 +295,6 @@ static void check_collisions(int ox, int oy, int nx, int ny) {
       return;
     }
   }
-  // Internal hole walls
   for (int i = 0; i < s_cur_hole->num_walls; i++) {
     GPoint w1 = s_cur_hole->walls[i][0];
     GPoint w2 = s_cur_hole->walls[i][1];
@@ -283,7 +319,6 @@ static void ball_tick(void *context) {
   s_bx += s_vx;
   s_by += s_vy;
 
-  // Hard-clamp to play area with bounce
   if (s_bx < (int32_t)BALL_R * FP) {
     s_bx = (int32_t)BALL_R * FP;
     s_vx = iabs32(s_vx) * 7 / 8;
@@ -335,44 +370,87 @@ static void ball_tick(void *context) {
 
 // ---- Drawing ----
 static void draw_menu(GContext *ctx, GRect bounds) {
+  int cx = bounds.size.w / 2;
+
   graphics_context_set_fill_color(ctx, GColorBlack);
   graphics_fill_rect(ctx, bounds, 0, GCornerNone);
 
-  int cx = bounds.size.w / 2;
-  int cy = bounds.size.h / 3;
-
-  // Golf ball graphic
+  // Ball graphic (smaller to make room for scores)
+  int ball_r = 22;
+  int ball_cy = ball_r + 8;
 #ifdef PBL_COLOR
   graphics_context_set_fill_color(ctx, GColorIslamicGreen);
-  graphics_fill_circle(ctx, GPoint(cx, cy), 38);
+  graphics_fill_circle(ctx, GPoint(cx, ball_cy), ball_r);
   graphics_context_set_fill_color(ctx, GColorWhite);
-  graphics_fill_circle(ctx, GPoint(cx, cy), 7);
+  graphics_fill_circle(ctx, GPoint(cx, ball_cy), 6);
   graphics_context_set_fill_color(ctx, GColorBlack);
-  graphics_fill_circle(ctx, GPoint(cx, cy), 2);
+  graphics_fill_circle(ctx, GPoint(cx, ball_cy), 2);
 #else
   graphics_context_set_stroke_color(ctx, GColorWhite);
   graphics_context_set_stroke_width(ctx, 2);
-  graphics_draw_circle(ctx, GPoint(cx, cy), 38);
+  graphics_draw_circle(ctx, GPoint(cx, ball_cy), ball_r);
   graphics_context_set_fill_color(ctx, GColorWhite);
-  graphics_fill_circle(ctx, GPoint(cx, cy), 7);
+  graphics_fill_circle(ctx, GPoint(cx, ball_cy), 6);
   graphics_context_set_fill_color(ctx, GColorBlack);
-  graphics_fill_circle(ctx, GPoint(cx, cy), 2);
+  graphics_fill_circle(ctx, GPoint(cx, ball_cy), 2);
 #endif
 
+  int y = ball_cy + ball_r + 4;
+
+  // Title
   graphics_context_set_text_color(ctx, GColorWhite);
   graphics_draw_text(ctx, "Mini Golf",
     fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
-    GRect(0, cy + 42, bounds.size.w, 28),
+    GRect(0, y, bounds.size.w, 28),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+  y += 30;
 
-  graphics_draw_text(ctx, "UP: 18-Hole Course",
+  // Best scores
+  char best_buf[28];
+  char b18[10], b9[8];
+  if (s_best_18 > 0) snprintf(b18, sizeof(b18), "%d", s_best_18);
+  else               snprintf(b18, sizeof(b18), "--");
+  if (s_best_9 > 0)  snprintf(b9, sizeof(b9), "%d", s_best_9);
+  else               snprintf(b9, sizeof(b9), "--");
+  snprintf(best_buf, sizeof(best_buf), "Best 18H:%s  9H:%s", b18, b9);
+#ifdef PBL_COLOR
+  graphics_context_set_text_color(ctx, GColorChromeYellow);
+#else
+  graphics_context_set_text_color(ctx, GColorWhite);
+#endif
+  graphics_draw_text(ctx, best_buf,
     fonts_get_system_font(FONT_KEY_GOTHIC_14),
-    GRect(4, cy + 76, bounds.size.w - 8, 18),
+    GRect(4, y, bounds.size.w - 8, 16),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+  y += 18;
+
+  graphics_context_set_text_color(ctx, GColorWhite);
+
+  // Resume option (18-hole saves only)
+  if (s_has_save) {
+    int saved_hole = persist_read_int(PKEY_SAVE_HOLE);
+    char res_buf[24];
+    snprintf(res_buf, sizeof(res_buf), "SEL: Resume H%d/18", saved_hole + 1);
+#ifdef PBL_COLOR
+    graphics_context_set_text_color(ctx, GColorGreen);
+#endif
+    graphics_draw_text(ctx, res_buf,
+      fonts_get_system_font(FONT_KEY_GOTHIC_14),
+      GRect(4, y, bounds.size.w - 8, 16),
+      GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+    y += 18;
+    graphics_context_set_text_color(ctx, GColorWhite);
+  }
+
+  graphics_draw_text(ctx, "UP: New 18-Hole",
+    fonts_get_system_font(FONT_KEY_GOTHIC_14),
+    GRect(4, y, bounds.size.w - 8, 16),
+    GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+  y += 18;
 
   graphics_draw_text(ctx, "DOWN: Random 9-Hole",
     fonts_get_system_font(FONT_KEY_GOTHIC_14),
-    GRect(4, cy + 96, bounds.size.w - 8, 18),
+    GRect(4, y, bounds.size.w - 8, 16),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 }
 
@@ -394,7 +472,7 @@ static void draw_scorecard(GContext *ctx, GRect bounds) {
 
   for (int i = 0; i < s_total_holes; i++) {
     const HoleData *h = s_random_mode ? &s_proc_holes[i] : &s_holes[i];
-    int st = s_scores[i];
+    int st = (s_scores[i] >= 0) ? s_scores[i] : 0;
     total_strokes += st;
     total_par += h->par;
     int diff = st - h->par;
@@ -411,15 +489,23 @@ static void draw_scorecard(GContext *ctx, GRect bounds) {
   }
 
   char buf[32];
-  snprintf(buf, sizeof(buf), "Total %d  Par %d", total_strokes, total_par);
+  // Flag if new best
+  bool is_best = s_random_mode ? (s_best_9 > 0 && total_strokes == s_best_9)
+                                : (s_best_18 > 0 && total_strokes == s_best_18);
+  snprintf(buf, sizeof(buf), "Total %d  Par %d%s",
+           total_strokes, total_par, is_best ? " NEW BEST!" : "");
+#ifdef PBL_COLOR
+  graphics_context_set_text_color(ctx, is_best ? GColorChromeYellow : GColorWhite);
+#endif
   graphics_draw_text(ctx, buf,
     fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
     GRect(4, bounds.size.h - 28, bounds.size.w - 8, 24),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
+  graphics_context_set_text_color(ctx, GColorWhite);
   graphics_draw_text(ctx, "SELECT: Menu",
     fonts_get_system_font(FONT_KEY_GOTHIC_14),
-    GRect(4, bounds.size.h - 52, bounds.size.w - 8, 18),
+    GRect(4, bounds.size.h - 50, bounds.size.w - 8, 18),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 }
 
@@ -439,7 +525,6 @@ static void draw_hud(GContext *ctx, int screen_w) {
 }
 
 static void draw_hole_field(GContext *ctx) {
-  // Fairway
 #ifdef PBL_COLOR
   graphics_context_set_fill_color(ctx, GColorIslamicGreen);
 #else
@@ -447,7 +532,6 @@ static void draw_hole_field(GContext *ctx) {
 #endif
   graphics_fill_rect(ctx, GRect(s_px, s_py, PW, PH), 0, GCornerNone);
 
-  // Cup
   GPoint cup = to_screen(s_cur_hole->cup);
   graphics_context_set_fill_color(ctx, GColorBlack);
   graphics_fill_circle(ctx, cup, CUP_R);
@@ -456,7 +540,6 @@ static void draw_hole_field(GContext *ctx) {
   graphics_context_set_fill_color(ctx, GColorBlack);
   graphics_fill_circle(ctx, cup, 1);
 
-  // Internal walls
 #ifdef PBL_COLOR
   graphics_context_set_stroke_color(ctx, GColorDarkGreen);
 #else
@@ -469,7 +552,6 @@ static void draw_hole_field(GContext *ctx) {
     graphics_draw_line(ctx, w1, w2);
   }
 
-  // Play area border
 #ifdef PBL_COLOR
   graphics_context_set_stroke_color(ctx, GColorDarkGreen);
 #else
@@ -531,21 +613,20 @@ static void draw_power_bar(GContext *ctx, GRect bounds) {
 #endif
   graphics_fill_rect(ctx, GRect(bar_x, bar_y + bar_h - fill_h, bar_w, fill_h),
                      0, GCornerNone);
-
   graphics_context_set_stroke_color(ctx, GColorWhite);
   graphics_context_set_stroke_width(ctx, 1);
   graphics_draw_rect(ctx, GRect(bar_x, bar_y, bar_w, bar_h));
 }
 
 static const char *score_term(int strokes, int par) {
-  if (strokes == 1)         return "Hole in One!";
+  if (strokes == 1) return "Hole in One!";
   int d = strokes - par;
-  if (d <= -2)              return "Eagle!";
-  if (d == -1)              return "Birdie!";
-  if (d ==  0)              return "Par";
-  if (d ==  1)              return "Bogey";
-  if (d ==  2)              return "Double Bogey";
-  return                           "Triple+";
+  if (d <= -2)  return "Eagle!";
+  if (d == -1)  return "Birdie!";
+  if (d ==  0)  return "Par";
+  if (d ==  1)  return "Bogey";
+  if (d ==  2)  return "Double Bogey";
+  return               "Triple+";
 }
 
 static void draw_hole_out_overlay(GContext *ctx, GRect bounds) {
@@ -599,7 +680,6 @@ static void layer_update(Layer *layer, GContext *ctx) {
     return;
   }
 
-  // Game screen background
   graphics_context_set_fill_color(ctx, GColorBlack);
   graphics_fill_rect(ctx, bounds, 0, GCornerNone);
 
@@ -625,9 +705,6 @@ static void layer_update(Layer *layer, GContext *ctx) {
         GRect(0, bounds.size.h - 14, bounds.size.w - 12, 14),
         GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
       break;
-    case STATE_ROLLING:
-      // Ball animates, no extra UI
-      break;
     case STATE_HOLE_OUT:
       draw_hole_out_overlay(ctx, bounds);
       break;
@@ -649,15 +726,37 @@ static void start_hole(void) {
   layer_mark_dirty(s_layer);
 }
 
+static void resume_saved_game(void) {
+  s_random_mode = false;
+  s_total_holes = 18;
+  s_current_hole = persist_read_int(PKEY_SAVE_HOLE);
+  persist_read_data(PKEY_SAVE_SCORES, s_scores, sizeof(s_scores));
+  // If saved at HOLE_OUT (score recorded), advance to next hole
+  if (s_current_hole < 18 && s_scores[s_current_hole] >= 0) {
+    s_current_hole++;
+  }
+  if (s_current_hole >= 18) {
+    check_and_save_best();
+    s_state = STATE_SCORECARD;
+    layer_mark_dirty(s_layer);
+  } else {
+    // Clear in-progress score for this hole (start it fresh)
+    s_scores[s_current_hole] = -1;
+    start_hole();
+  }
+}
+
 // ---- Button Handlers ----
 static void up_handler(ClickRecognizerRef ref, void *ctx) {
   (void)ref; (void)ctx;
   switch (s_state) {
     case STATE_MENU:
+      // Start fresh 18-hole game (discards any saved game)
       s_random_mode = false;
       s_total_holes = 18;
       s_current_hole = 0;
-      memset(s_scores, 0, sizeof(s_scores));
+      memset(s_scores, -1, sizeof(s_scores));
+      clear_saved_game();
       start_hole();
       break;
     case STATE_AIM:
@@ -680,7 +779,7 @@ static void down_handler(ClickRecognizerRef ref, void *ctx) {
       s_random_mode = true;
       s_total_holes = 9;
       s_current_hole = 0;
-      memset(s_scores, 0, sizeof(s_scores));
+      memset(s_scores, -1, sizeof(s_scores));
       generate_proc_holes();
       start_hole();
       break;
@@ -700,15 +799,18 @@ static void down_handler(ClickRecognizerRef ref, void *ctx) {
 static void select_handler(ClickRecognizerRef ref, void *ctx) {
   (void)ref; (void)ctx;
   switch (s_state) {
+    case STATE_MENU:
+      if (s_has_save) resume_saved_game();
+      break;
     case STATE_AIM:
       s_state = STATE_POWER;
       layer_mark_dirty(s_layer);
       break;
     case STATE_POWER: {
-      // Shoot
+      // Shoot — increased power multiplier (×4 instead of ×3/2)
       s_strokes++;
       int32_t ta = DEG_TO_TRIGANGLE(s_angle);
-      int32_t v0 = (int32_t)s_power * 3 / 2;
+      int32_t v0 = (int32_t)s_power * 4;
       s_vx = v0 * sin_lookup(ta) / TRIG_MAX_RATIO;
       s_vy = -v0 * cos_lookup(ta) / TRIG_MAX_RATIO;
       s_state = STATE_ROLLING;
@@ -719,6 +821,7 @@ static void select_handler(ClickRecognizerRef ref, void *ctx) {
     case STATE_HOLE_OUT:
       s_current_hole++;
       if (s_current_hole >= s_total_holes) {
+        check_and_save_best();
         s_state = STATE_SCORECARD;
         layer_mark_dirty(s_layer);
       } else {
@@ -736,12 +839,30 @@ static void select_handler(ClickRecognizerRef ref, void *ctx) {
 
 static void back_handler(ClickRecognizerRef ref, void *ctx) {
   (void)ref; (void)ctx;
-  if (s_state != STATE_MENU) {
-    if (s_ball_timer) { app_timer_cancel(s_ball_timer); s_ball_timer = NULL; }
-    s_state = STATE_MENU;
-    layer_mark_dirty(s_layer);
-  } else {
-    window_stack_remove(s_window, true);
+  switch (s_state) {
+    case STATE_POWER:
+      // Return to aim phase — don't go to menu
+      s_state = STATE_AIM;
+      layer_mark_dirty(s_layer);
+      break;
+    case STATE_AIM:
+    case STATE_ROLLING:
+    case STATE_HOLE_OUT:
+      // Save progress and return to menu
+      if (s_ball_timer) { app_timer_cancel(s_ball_timer); s_ball_timer = NULL; }
+      save_game_progress();
+      s_state = STATE_MENU;
+      layer_mark_dirty(s_layer);
+      break;
+    case STATE_SCORECARD:
+      s_state = STATE_MENU;
+      layer_mark_dirty(s_layer);
+      break;
+    case STATE_MENU:
+      window_stack_remove(s_window, true);
+      break;
+    default:
+      break;
   }
 }
 
@@ -757,7 +878,6 @@ static void window_load(Window *window) {
   Layer *root = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(root);
 
-  // Center the play area on the screen
   s_px = (bounds.size.w - PW) / 2;
   s_py = HUD_H + (bounds.size.h - HUD_H - PH) / 2;
 
@@ -776,6 +896,8 @@ static void window_unload(Window *window) {
 
 // ---- App Lifecycle ----
 static void init(void) {
+  load_persistent_data();
+
   s_window = window_create();
   window_set_background_color(s_window, GColorBlack);
   window_set_window_handlers(s_window, (WindowHandlers){
