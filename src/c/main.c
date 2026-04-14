@@ -359,11 +359,30 @@ static void ball_tick(void *context) {
   int bpx = (int)(s_bx / FP), bpy = (int)(s_by / FP);
   int cdx = bpx - s_cur_hole->cup.x, cdy = bpy - s_cur_hole->cup.y;
   if (cdx*cdx + cdy*cdy <= CUP_R*CUP_R) {
-    s_scores[s_current_hole] = (int8_t)s_strokes;
-    s_state = STATE_HOLE_OUT;
-    vibes_long_pulse();
-    layer_mark_dirty(s_layer);
-    return;
+    int32_t speed = iabs32(s_vx) + iabs32(s_vy);
+    if (speed > 96) {
+      // Lip out — too fast, ball hits back of cup and bounces out
+      int nx = cdx, ny = cdy;
+      int len_sq = nx*nx + ny*ny;
+      if (len_sq == 0) { nx = 1; ny = 0; len_sq = 1; }
+      int32_t dot = (int32_t)s_vx * nx + (int32_t)s_vy * ny;
+      s_vx -= (int32_t)2 * dot * nx / len_sq;
+      s_vy -= (int32_t)2 * dot * ny / len_sq;
+      // Energy absorbed by rim (~40% loss)
+      s_vx = s_vx * 6 / 10;
+      s_vy = s_vy * 6 / 10;
+      // Nudge ball outside cup so it doesn't re-trigger immediately
+      s_bx += (int32_t)nx * FP * 2;
+      s_by += (int32_t)ny * FP * 2;
+      vibes_enqueue_custom_pattern(s_bounce_pat);
+    } else {
+      // Ball drops in
+      s_scores[s_current_hole] = (int8_t)s_strokes;
+      s_state = STATE_HOLE_OUT;
+      vibes_long_pulse();
+      layer_mark_dirty(s_layer);
+      return;
+    }
   }
 
   // Stop check
