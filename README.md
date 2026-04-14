@@ -18,17 +18,16 @@ Take on 18 hand-crafted holes with increasing difficulty, or tee off on a random
 
 ## Controls
 
-Aim Phase:
-  UP     - Rotate aim clockwise
-  DOWN   - Rotate aim counter-clockwise
-  SELECT - Lock direction
-  BACK   - Return to menu
-
-Power Phase:
-  UP     - Increase power
-  DOWN   - Decrease power
-  SELECT - Shoot
-  BACK   - Back to aim
+```
++--------+----------------------------+------------------+
+| Button | Aim Phase                  | Power Phase      |
++--------+----------------------------+------------------+
+| UP     | Rotate aim clockwise       | Increase power   |
+| DOWN   | Rotate aim counter-clock   | Decrease power   |
+| SELECT | Lock direction             | Shoot            |
+| BACK   | Return to menu             | Back to aim      |
++--------+----------------------------+------------------+
+```
 
 ## Platforms
 
