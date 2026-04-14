@@ -13,8 +13,13 @@
 #define STOP_THRESH      6
 #define ANGLE_STEP      10
 #define POWER_STEP       5
-#define PW             130
-#define PH             138
+#ifdef PBL_ROUND
+  #define PW 127
+  #define PH 130
+#else
+  #define PW 130
+  #define PH 138
+#endif
 #define HUD_H           16
 
 // Persistent storage keys
@@ -245,7 +250,7 @@ static void generate_proc_holes(void) {
     h->tee.x = (int16_t)rand_range(10, 50);
     h->tee.y = (int16_t)rand_range(10, 50);
     h->cup.x = (int16_t)rand_range(75, 120);
-    h->cup.y = (int16_t)rand_range(85, 128);
+    h->cup.y = (int16_t)rand_range(85, PH - 10);
     int dx = h->cup.x - h->tee.x, dy = h->cup.y - h->tee.y;
     if (dx*dx + dy*dy < 4000) { h->cup.x = 110; h->cup.y = 120; }
     int nw = rand_range(1, 3);
