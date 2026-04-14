@@ -105,6 +105,15 @@ static const HoleData s_holes[18] = {
       {{4,28},{60,28}},  {{45,108},{45,40}} } },
 };
 
+// Forward declaration
+static void start_hint(const char *line1, const char *line2);
+
+// Hint animation constants
+#define HINT_MS         120
+#define HINT_FADE_STEPS 3
+#define HINT_HOLD_STEPS 18
+#define HINT_TOTAL      (HINT_FADE_STEPS + HINT_HOLD_STEPS + HINT_FADE_STEPS)
+
 // ---- Globals ----
 static Window    *s_window;
 static Layer     *s_layer;
@@ -112,6 +121,10 @@ static GBitmap   *s_gball_bmp;
 static AppTimer  *s_ball_timer;
 static AppTimer  *s_anim_timer;
 static AppTimer  *s_intro_timer;
+static AppTimer  *s_hint_timer;
+static int8_t     s_hint_frame;
+static char       s_hint_line1[24];
+static char       s_hint_line2[24];
 static GameState  s_state;
 static bool       s_random_mode;
 static int        s_current_hole;
@@ -327,6 +340,7 @@ static void anim_tick(void *context) {
 static void intro_timer_cb(void *context) {
   s_intro_timer = NULL;
   s_state = STATE_AIM;
+  start_hint("UP/DN: rotate aim", "SEL: lock direction");
   layer_mark_dirty(s_layer);
 }
 
@@ -395,6 +409,7 @@ static void ball_tick(void *context) {
       vibes_double_pulse();
     } else {
       s_state = STATE_AIM;
+      start_hint("UP/DN: rotate aim", "SEL: lock direction");
     }
     layer_mark_dirty(s_layer);
     return;
@@ -402,6 +417,71 @@ static void ball_tick(void *context) {
 
   layer_mark_dirty(s_layer);
   s_ball_timer = app_timer_register(TIMER_MS, ball_tick, NULL);
+}
+
+// ---- Hint animation ----
+
+static void hint_tick(void *context) {
+  if (s_hint_frame < HINT_TOTAL) {
+    s_hint_frame++;
+    layer_mark_dirty(s_layer);
+    s_hint_timer = app_timer_register(HINT_MS, hint_tick, NULL);
+  } else {
+    s_hint_frame = 0;
+    s_hint_timer = NULL;
+    layer_mark_dirty(s_layer);
+  }
+}
+
+static void start_hint(const char *line1, const char *line2) {
+  if (s_hint_timer) { app_timer_cancel(s_hint_timer); s_hint_timer = NULL; }
+  strncpy(s_hint_line1, line1, sizeof(s_hint_line1) - 1);
+  s_hint_line1[sizeof(s_hint_line1) - 1] = '\0';
+  strncpy(s_hint_line2, line2, sizeof(s_hint_line2) - 1);
+  s_hint_line2[sizeof(s_hint_line2) - 1] = '\0';
+  s_hint_frame = 1;
+  layer_mark_dirty(s_layer);
+  s_hint_timer = app_timer_register(HINT_MS, hint_tick, NULL);
+}
+
+static void draw_hint(GContext *ctx, GRect bounds) {
+  if (s_hint_frame <= 0) return;
+
+  // Calculate alpha 0..HINT_FADE_STEPS
+  int alpha;
+  if (s_hint_frame <= HINT_FADE_STEPS) {
+    alpha = s_hint_frame;
+  } else if (s_hint_frame <= HINT_FADE_STEPS + HINT_HOLD_STEPS) {
+    alpha = HINT_FADE_STEPS;
+  } else {
+    int fade_out = s_hint_frame - HINT_FADE_STEPS - HINT_HOLD_STEPS;
+    alpha = HINT_FADE_STEPS - fade_out;
+  }
+  if (alpha <= 0) return;
+
+  int strip_h = 28;
+  GRect strip = GRect(0, bounds.size.h - strip_h, bounds.size.w, strip_h);
+
+#ifdef PBL_COLOR
+  GColor strip_col = (alpha >= HINT_FADE_STEPS) ? GColorBlack : GColorDarkGray;
+  GColor text_col  = (alpha >= HINT_FADE_STEPS) ? GColorWhite :
+                     (alpha == 2)               ? GColorLightGray : GColorDarkGray;
+#else
+  GColor strip_col = GColorBlack;
+  GColor text_col  = (alpha >= 2) ? GColorWhite : GColorLightGray;
+#endif
+
+  graphics_context_set_fill_color(ctx, strip_col);
+  graphics_fill_rect(ctx, strip, 0, GCornerNone);
+  graphics_context_set_text_color(ctx, text_col);
+  graphics_draw_text(ctx, s_hint_line1,
+    fonts_get_system_font(FONT_KEY_GOTHIC_14),
+    GRect(0, bounds.size.h - strip_h, bounds.size.w, 14),
+    GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+  graphics_draw_text(ctx, s_hint_line2,
+    fonts_get_system_font(FONT_KEY_GOTHIC_14),
+    GRect(0, bounds.size.h - 14, bounds.size.w, 14),
+    GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 }
 
 // ---- Drawing ----
@@ -793,28 +873,12 @@ static void layer_update(Layer *layer, GContext *ctx) {
   switch (s_state) {
     case STATE_AIM:
       draw_shot_guide(ctx);
-      graphics_context_set_text_color(ctx, GColorWhite);
-      graphics_draw_text(ctx, "UP/DN: rotate aim",
-        fonts_get_system_font(FONT_KEY_GOTHIC_14),
-        GRect(0, bounds.size.h - 28, bounds.size.w, 14),
-        GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
-      graphics_draw_text(ctx, "SEL: lock direction",
-        fonts_get_system_font(FONT_KEY_GOTHIC_14),
-        GRect(0, bounds.size.h - 14, bounds.size.w, 14),
-        GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+      draw_hint(ctx, bounds);
       break;
     case STATE_POWER:
       draw_shot_guide(ctx);
       draw_power_bar(ctx, bounds);
-      graphics_context_set_text_color(ctx, GColorWhite);
-      graphics_draw_text(ctx, "UP/DN: adjust power",
-        fonts_get_system_font(FONT_KEY_GOTHIC_14),
-        GRect(0, bounds.size.h - 28, bounds.size.w, 14),
-        GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
-      graphics_draw_text(ctx, "SEL: shoot",
-        fonts_get_system_font(FONT_KEY_GOTHIC_14),
-        GRect(0, bounds.size.h - 14, bounds.size.w, 14),
-        GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+      draw_hint(ctx, bounds);
       break;
     case STATE_HOLE_OUT:
       draw_hole_out_overlay(ctx, bounds);
@@ -829,6 +893,7 @@ static void cancel_timers(void) {
   if (s_ball_timer)  { app_timer_cancel(s_ball_timer);  s_ball_timer  = NULL; }
   if (s_anim_timer)  { app_timer_cancel(s_anim_timer);  s_anim_timer  = NULL; }
   if (s_intro_timer) { app_timer_cancel(s_intro_timer); s_intro_timer = NULL; }
+  if (s_hint_timer)  { app_timer_cancel(s_hint_timer);  s_hint_timer  = NULL; s_hint_frame = 0; }
 }
 
 static void start_hole(void) {
@@ -918,10 +983,12 @@ static void select_handler(ClickRecognizerRef ref, void *ctx) {
       // Skip countdown, go straight to aim
       if (s_intro_timer) { app_timer_cancel(s_intro_timer); s_intro_timer = NULL; }
       s_state = STATE_AIM;
+      start_hint("UP/DN: rotate aim", "SEL: lock direction");
       layer_mark_dirty(s_layer);
       break;
     case STATE_AIM:
       s_state = STATE_POWER;
+      start_hint("UP/DN: adjust power", "SEL: shoot");
       layer_mark_dirty(s_layer);
       break;
     case STATE_POWER: {
@@ -958,6 +1025,7 @@ static void back_handler(ClickRecognizerRef ref, void *ctx) {
   switch (s_state) {
     case STATE_POWER:
       s_state = STATE_AIM;
+      start_hint("UP/DN: rotate aim", "SEL: lock direction");
       layer_mark_dirty(s_layer);
       break;
     case STATE_HOLE_INTRO:
