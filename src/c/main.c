@@ -794,18 +794,26 @@ static void layer_update(Layer *layer, GContext *ctx) {
     case STATE_AIM:
       draw_shot_guide(ctx);
       graphics_context_set_text_color(ctx, GColorWhite);
-      graphics_draw_text(ctx, "AIM  UP/DN=rotate  SEL=lock",
+      graphics_draw_text(ctx, "UP/DN: rotate aim",
         fonts_get_system_font(FONT_KEY_GOTHIC_14),
-        GRect(0, bounds.size.h - 14, bounds.size.w - 12, 14),
+        GRect(0, bounds.size.h - 28, bounds.size.w, 14),
+        GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+      graphics_draw_text(ctx, "SEL: lock direction",
+        fonts_get_system_font(FONT_KEY_GOTHIC_14),
+        GRect(0, bounds.size.h - 14, bounds.size.w, 14),
         GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
       break;
     case STATE_POWER:
       draw_shot_guide(ctx);
       draw_power_bar(ctx, bounds);
       graphics_context_set_text_color(ctx, GColorWhite);
-      graphics_draw_text(ctx, "POWER  UP/DN=adj  SEL=shoot",
+      graphics_draw_text(ctx, "UP/DN: adjust power",
         fonts_get_system_font(FONT_KEY_GOTHIC_14),
-        GRect(0, bounds.size.h - 14, bounds.size.w - 12, 14),
+        GRect(0, bounds.size.h - 28, bounds.size.w, 14),
+        GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+      graphics_draw_text(ctx, "SEL: shoot",
+        fonts_get_system_font(FONT_KEY_GOTHIC_14),
+        GRect(0, bounds.size.h - 14, bounds.size.w, 14),
         GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
       break;
     case STATE_HOLE_OUT:
