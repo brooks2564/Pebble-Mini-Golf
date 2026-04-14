@@ -413,7 +413,7 @@ static void draw_menu(GContext *ctx, GRect bounds) {
     fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
     GRect(0, y, bounds.size.w, 28),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
-  y += 30;
+  y += 27;
 
   // Best scores
   char b18[8], b9[8];
@@ -430,7 +430,7 @@ static void draw_menu(GContext *ctx, GRect bounds) {
     fonts_get_system_font(FONT_KEY_GOTHIC_14),
     GRect(4, y, bounds.size.w - 8, 16),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
-  y += 18;
+  y += 16;
 
   graphics_context_set_text_color(ctx, GColorWhite);
 
@@ -445,7 +445,7 @@ static void draw_menu(GContext *ctx, GRect bounds) {
       fonts_get_system_font(FONT_KEY_GOTHIC_14),
       GRect(4, y, bounds.size.w - 8, 16),
       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
-    y += 18;
+    y += 16;
     graphics_context_set_text_color(ctx, GColorWhite);
   }
 
@@ -453,7 +453,7 @@ static void draw_menu(GContext *ctx, GRect bounds) {
     fonts_get_system_font(FONT_KEY_GOTHIC_14),
     GRect(4, y, bounds.size.w - 8, 16),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
-  y += 17;
+  y += 16;
   graphics_draw_text(ctx, "DOWN: Random 9-Hole",
     fonts_get_system_font(FONT_KEY_GOTHIC_14),
     GRect(4, y, bounds.size.w - 8, 16),
