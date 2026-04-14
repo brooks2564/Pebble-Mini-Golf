@@ -677,14 +677,14 @@ static void draw_shot_guide(GContext *ctx) {
 #endif
 
   // 5 dots at 60% of original distances (reduced by 40%)
-  static const int dists[] = { 13, 22, 30, 38, 47 };
+  static const int dists[] = { 9, 15, 21, 27, 33 };
   for (int i = 0; i < 5; i++) {
     int d     = dists[i];
     int dot_x = bx + d * sin_a / 100;
     int dot_y = by - d * cos_a / 100;
     if (dot_x >= s_px + 1 && dot_x < s_px + PW - 1 &&
         dot_y >= s_py + 1 && dot_y < s_py + PH - 1) {
-      graphics_fill_circle(ctx, GPoint(dot_x, dot_y), 1);
+      graphics_fill_circle(ctx, GPoint(dot_x, dot_y), 2);
     }
   }
 }
