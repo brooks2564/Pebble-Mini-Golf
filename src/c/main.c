@@ -1074,7 +1074,7 @@ static void up_handler(ClickRecognizerRef ref, void *ctx) {
       start_hole();
       break;
     case STATE_AIM:
-      s_angle = (s_angle - ANGLE_STEP + 360) % 360;
+      s_angle = (s_angle + ANGLE_STEP) % 360;
       layer_mark_dirty(s_layer);
       break;
     case STATE_POWER:
@@ -1095,7 +1095,7 @@ static void down_handler(ClickRecognizerRef ref, void *ctx) {
       start_hole();
       break;
     case STATE_AIM:
-      s_angle = (s_angle + ANGLE_STEP) % 360;
+      s_angle = (s_angle - ANGLE_STEP + 360) % 360;
       layer_mark_dirty(s_layer);
       break;
     case STATE_POWER:
