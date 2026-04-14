@@ -603,67 +603,109 @@ static void draw_hole_intro(GContext *ctx, GRect bounds) {
 }
 
 static void draw_scorecard(GContext *ctx, GRect bounds) {
+  int sw = bounds.size.w, sh = bounds.size.h;
+
   graphics_context_set_fill_color(ctx, GColorBlack);
   graphics_fill_rect(ctx, bounds, 0, GCornerNone);
-
   graphics_context_set_text_color(ctx, GColorWhite);
-  graphics_draw_text(ctx, "Scorecard",
+
+  graphics_draw_text(ctx, "SCORECARD",
     fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
-    GRect(0, 4, bounds.size.w, 22),
+    GRect(0, 2, sw, 22),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
   int total_par = 0, total_strokes = 0;
-  int cumulative = 0;
-  int y = 28;
-  int avail = bounds.size.h - 56;
-  int row_h = avail / s_total_holes;
-  if (row_h < 12) row_h = 12;
+  int row_h = 14, start_y = 24;
+  char buf[12];
 
-  for (int i = 0; i < s_total_holes; i++) {
-    const HoleData *h = s_random_mode ? &s_proc_holes[i] : &s_holes[i];
-    int st   = (s_scores[i] >= 0) ? s_scores[i] : 0;
-    int diff = st - h->par;
-    cumulative += diff;
-    total_strokes += st;
-    total_par     += h->par;
+  if (s_total_holes == 18) {
+    // Divider line down the centre
+    graphics_context_set_stroke_width(ctx, 1);
+#ifdef PBL_COLOR
+    graphics_context_set_stroke_color(ctx, GColorDarkGray);
+#else
+    graphics_context_set_stroke_color(ctx, GColorWhite);
+#endif
+    graphics_draw_line(ctx, GPoint(sw/2, start_y), GPoint(sw/2, sh - 20));
 
-    char cum_str[6];
-    if (cumulative == 0)    snprintf(cum_str, sizeof(cum_str), "E");
-    else if (cumulative > 0) snprintf(cum_str, sizeof(cum_str), "+%d", cumulative);
-    else                     snprintf(cum_str, sizeof(cum_str), "%d", cumulative);
+    for (int i = 0; i < 9; i++) {
+      int y  = start_y + i * row_h;
+      int li = i, ri = i + 9;
+      const HoleData *hl = &s_holes[li];
+      const HoleData *hr = &s_holes[ri];
+      total_par += hl->par + hr->par;
 
-    char buf[28];
-    snprintf(buf, sizeof(buf), "%2d.%d/%d %s  %s",
-             i+1, st, h->par,
-             diff < 0 ? "-" : (diff == 0 ? "=" : "+"),
-             cum_str);
-    graphics_draw_text(ctx, buf,
-      fonts_get_system_font(FONT_KEY_GOTHIC_14),
-      GRect(4, y, bounds.size.w - 8, row_h + 2),
-      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-    y += row_h;
-    if (y > bounds.size.h - 30) break;
+      // Left column: holes 1-9
+      if (s_scores[li] >= 0) {
+        total_strokes += s_scores[li];
+        snprintf(buf, sizeof(buf), "%d   %d", li+1, s_scores[li]);
+        graphics_context_set_text_color(ctx, GColorWhite);
+      } else {
+        snprintf(buf, sizeof(buf), "%d  --", li+1);
+#ifdef PBL_COLOR
+        graphics_context_set_text_color(ctx, GColorDarkGray);
+#endif
+      }
+      graphics_draw_text(ctx, buf,
+        fonts_get_system_font(FONT_KEY_GOTHIC_14),
+        GRect(4, y, sw/2 - 6, row_h + 2),
+        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+
+      // Right column: holes 10-18
+      graphics_context_set_text_color(ctx, GColorWhite);
+      if (s_scores[ri] >= 0) {
+        total_strokes += s_scores[ri];
+        snprintf(buf, sizeof(buf), "%d  %d", ri+1, s_scores[ri]);
+        graphics_context_set_text_color(ctx, GColorWhite);
+      } else {
+        snprintf(buf, sizeof(buf), "%d --", ri+1);
+#ifdef PBL_COLOR
+        graphics_context_set_text_color(ctx, GColorDarkGray);
+#endif
+      }
+      graphics_draw_text(ctx, buf,
+        fonts_get_system_font(FONT_KEY_GOTHIC_14),
+        GRect(sw/2 + 4, y, sw/2 - 8, row_h + 2),
+        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+    }
+  } else {
+    // 9-hole random: single column
+    for (int i = 0; i < 9; i++) {
+      int y = start_y + i * row_h;
+      const HoleData *hd = &s_proc_holes[i];
+      total_par += hd->par;
+      graphics_context_set_text_color(ctx, GColorWhite);
+      if (s_scores[i] >= 0) {
+        total_strokes += s_scores[i];
+        snprintf(buf, sizeof(buf), "H%d   %d", i+1, s_scores[i]);
+      } else {
+        snprintf(buf, sizeof(buf), "H%d  --", i+1);
+#ifdef PBL_COLOR
+        graphics_context_set_text_color(ctx, GColorDarkGray);
+#endif
+      }
+      graphics_draw_text(ctx, buf,
+        fonts_get_system_font(FONT_KEY_GOTHIC_14),
+        GRect(4, y, sw - 8, row_h + 2),
+        GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+    }
   }
 
+  // Total line
   bool is_best = s_random_mode
     ? (s_best_9  > 0 && total_strokes == s_best_9)
     : (s_best_18 > 0 && total_strokes == s_best_18);
-
-  char buf[32];
-  snprintf(buf, sizeof(buf), "Total %d  Par %d%s",
+  char total_buf[32];
+  snprintf(total_buf, sizeof(total_buf), "Total %d  Par %d%s",
            total_strokes, total_par, is_best ? " BEST!" : "");
 #ifdef PBL_COLOR
   graphics_context_set_text_color(ctx, is_best ? GColorChromeYellow : GColorWhite);
-#endif
-  graphics_draw_text(ctx, buf,
-    fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
-    GRect(4, bounds.size.h - 28, bounds.size.w - 8, 24),
-    GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
-
+#else
   graphics_context_set_text_color(ctx, GColorWhite);
-  graphics_draw_text(ctx, "SELECT: Menu",
+#endif
+  graphics_draw_text(ctx, total_buf,
     fonts_get_system_font(FONT_KEY_GOTHIC_14),
-    GRect(4, bounds.size.h - 50, bounds.size.w - 8, 18),
+    GRect(4, sh - 18, sw - 8, 16),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 }
 
