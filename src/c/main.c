@@ -684,7 +684,7 @@ static void draw_shot_guide(GContext *ctx) {
     int dot_y = by - d * cos_a / 100;
     if (dot_x >= s_px + 1 && dot_x < s_px + PW - 1 &&
         dot_y >= s_py + 1 && dot_y < s_py + PH - 1) {
-      int r = (i < 3) ? 2 : 1;
+      int r = 1;
       graphics_fill_circle(ctx, GPoint(dot_x, dot_y), r);
     }
   }
@@ -775,7 +775,6 @@ static void layer_update(Layer *layer, GContext *ctx) {
   switch (s_state) {
     case STATE_AIM:
       draw_shot_guide(ctx);
-      draw_arrow(ctx);
       graphics_context_set_text_color(ctx, GColorWhite);
       graphics_draw_text(ctx, "AIM  UP/DN=rotate  SEL=lock",
         fonts_get_system_font(FONT_KEY_GOTHIC_14),
