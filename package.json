@@ -30,6 +30,11 @@
           "type": "png",
           "name": "MENU_ICON",
           "file": "images/menu_icon.png"
+        },
+        {
+          "type": "png",
+          "name": "GBALL_CLEAN",
+          "file": "images/gball_clean.png"
         }
       ]
     }

@@ -108,6 +108,7 @@ static const HoleData s_holes[18] = {
 // ---- Globals ----
 static Window    *s_window;
 static Layer     *s_layer;
+static GBitmap   *s_gball_bmp;
 static AppTimer  *s_ball_timer;
 static AppTimer  *s_anim_timer;
 static AppTimer  *s_intro_timer;
@@ -386,49 +387,19 @@ static void ball_tick(void *context) {
 
 // ---- Drawing ----
 
-// Golf ball with dimples (for menu screen)
-static const int8_t s_dimples[][2] = {
-  {-6,-8},{5,-8},{-1,-12},
-  {-11,-2},{0,-2},{11,-2},
-  {-6,5},{6,4},{0,10},
-  {-13,-5},{13,-4},
-  {-8,3},{9,-6},
-};
-
 static void draw_menu(GContext *ctx, GRect bounds) {
   int cx = bounds.size.w / 2;
 
   graphics_context_set_fill_color(ctx, GColorBlack);
   graphics_fill_rect(ctx, bounds, 0, GCornerNone);
 
-  // Golf ball (dimpled white sphere on green surround)
-  int ball_r  = 22;
-  int ball_cy = ball_r + 8;
+  // Golf ball image (50x50, centred near top)
+  int ball_r  = 25;   // half of 50px image
+  int ball_cy = ball_r + 4;
 
-#ifdef PBL_COLOR
-  // Green surround
-  graphics_context_set_fill_color(ctx, GColorIslamicGreen);
-  graphics_fill_circle(ctx, GPoint(cx, ball_cy), ball_r + 4);
-#endif
-
-  // White ball body
-  graphics_context_set_fill_color(ctx, GColorWhite);
-  graphics_fill_circle(ctx, GPoint(cx, ball_cy), ball_r);
-  graphics_context_set_stroke_color(ctx, GColorBlack);
-  graphics_context_set_stroke_width(ctx, 1);
-  graphics_draw_circle(ctx, GPoint(cx, ball_cy), ball_r);
-
-  // Dimples
-#ifdef PBL_COLOR
-  graphics_context_set_fill_color(ctx, GColorLightGray);
-#else
-  graphics_context_set_fill_color(ctx, GColorBlack);
-#endif
-  for (int d = 0; d < (int)ARRAY_LENGTH(s_dimples); d++) {
-    int dx = s_dimples[d][0], dy = s_dimples[d][1];
-    if (dx*dx + dy*dy < (ball_r - 3) * (ball_r - 3)) {
-      graphics_fill_circle(ctx, GPoint(cx + dx, ball_cy + dy), 2);
-    }
+  if (s_gball_bmp) {
+    graphics_draw_bitmap_in_rect(ctx, s_gball_bmp,
+      GRect(cx - ball_r, ball_cy - ball_r, 50, 50));
   }
 
   int y = ball_cy + ball_r + 5;
@@ -999,6 +970,8 @@ static void window_load(Window *window) {
   layer_set_update_proc(s_layer, layer_update);
   layer_add_child(root, s_layer);
 
+  s_gball_bmp = gbitmap_create_with_resource(RESOURCE_ID_GBALL_CLEAN);
+
   s_state = STATE_MENU;
   s_ball_timer = s_anim_timer = s_intro_timer = NULL;
 }
@@ -1006,6 +979,7 @@ static void window_load(Window *window) {
 static void window_unload(Window *window) {
   cancel_timers();
   layer_destroy(s_layer);
+  if (s_gball_bmp) { gbitmap_destroy(s_gball_bmp); s_gball_bmp = NULL; }
 }
 
 // ---- App Lifecycle ----
