@@ -23,118 +23,147 @@ Two options:
 1. **18-Hole Course** — hand-crafted holes, fixed layout every time
 2. **Random Course** — 9 procedurally generated holes, seeded by current time
 
+Menu also shows:
+- Best scores (18-hole and 9-hole)
+- Achievement stats (aces, eagles, under-par rounds) — shown once at least one is earned
+- Resume option if a saved 18-hole game exists
+
 ### Gameplay Flow (per hole)
-1. **Aim phase** — arrow rotates around ball; UP/DOWN changes angle, SELECT locks it
-2. **Power phase** — power bar on right side; UP increases, DOWN decreases, SELECT shoots
-3. **Ball animation** — ball travels via AppTimer, decelerates with friction, bounces off walls
-4. **Hole out** — when ball enters cup radius, show score term + stroke count, advance to next hole
-5. **Scorecard** — shown after final hole; total strokes vs total par
+1. **Hole intro** — shows hole number and par for 1.5s; SELECT skips
+2. **Aim phase** — dotted shot guide shows direction; UP/DOWN changes angle, SELECT locks it
+3. **Power phase** — power bar on right side (green→yellow→red); UP increases, DOWN decreases, SELECT shoots
+4. **Ball animation** — ball travels via AppTimer at 50ms, decelerates with friction, bounces off walls
+5. **Hole out** — when ball enters cup radius, overlay shows score term (color-coded), advance on SELECT
+6. **Scorecard** — shown after final hole; two-column layout (1–9 left, 10–18 right), total vs par diff
 
 ### Controls
-- **UP**: rotate aim clockwise (aim phase) / increase power (power phase)
-- **DOWN**: rotate aim counter-clockwise (aim phase) / decrease power (power phase)
-- **SELECT**: confirm aim → enter power phase; confirm power → shoot
-- **BACK**: exits app (standard Pebble behavior)
+- **UP**: rotate aim counter-clockwise (aim phase) / increase power (power phase)
+- **DOWN**: rotate aim clockwise (aim phase) / decrease power (power phase)
+- **SELECT**: confirm aim → power phase; confirm power → shoot; hole-out → next hole
+- **BACK**: power → aim; in-game → save & return to menu; menu → exit app
 
-### Ball Physics
-- Position stored as fixed-point (×16 subpixel precision): `int16_t ball_x, ball_y`
-- Velocity: `int16_t vel_x, vel_y` (pixels/tick × 16)
-- Friction: multiply velocity by 0.95 each tick (~20 ticks/sec via AppTimer at 50ms)
-- Stop threshold: `|vel_x| + |vel_y| < 8` (fixed-point)
-- Wall collision: reflect velocity vector off wall normal (dot product reflection formula)
-- Hole-in: distance from ball center to cup center < 6px
+### Score Terminology & Feedback
+| Strokes vs Par | Term         | Overlay Color | Haptic          |
+|----------------|--------------|---------------|-----------------|
+| 1 stroke total | Hole in One! | Gold          | Triple pulse    |
+| -2             | Eagle!       | Green         | Double pulse    |
+| -1             | Birdie!      | Green         | Long pulse      |
+|  0             | Par          | White         | Long pulse      |
+| +1             | Bogey        | Red           | Long pulse      |
+| +2             | Double Bogey | Red           | Long pulse      |
+| +3+            | Triple+      | Red           | Long pulse      |
+| MAX_STROKES(8) | pick up rule | —             | Double pulse    |
 
-### Score Terminology
-| Strokes vs Par | Term       |
-|----------------|------------|
-| -2             | Eagle      |
-| -1             | Birdie     |
-|  0             | Par        |
-| +1             | Bogey      |
-| +2             | Double Bogey |
-| +3 or more     | Triple+ / "X" |
-| 1 stroke total | Hole in One! |
-| Max strokes    | 8 (pick up rule) |
+### Lip-out Mechanic
+If ball enters cup radius at speed > 96 FP units, it bounces back out (dot-product reflection off cup-to-ball normal, 40% energy loss, nudge 2px outside cup). Short haptic tap.
+
+### Achievements (persistent storage)
+- `PKEY_ACH_HIO` (key 20) — total holes-in-one across all rounds
+- `PKEY_ACH_EAGLES` (key 21) — total eagles across all rounds
+- `PKEY_ACH_UNDER_PAR` (key 22) — total complete rounds finished under par
 
 ### Color vs B&W
-- `#ifdef PBL_COLOR`: fairway = GColorIslamicGreen, rough border = GColorDarkGreen, ball = GColorWhite, cup = GColorBlack with white ring, power bar = GColorChromeYellow → GColorRed
-- B&W (aplite, diorite, flint): fairway = GColorLightGray, border = GColorBlack, ball = GColorBlack, cup = GColorBlack
+- `#ifdef PBL_COLOR`: fairway = GColorIslamicGreen, border = GColorDarkGreen, ball = GColorWhite, cup = black+white ring, power bar green→yellow→red
+- B&W (aplite, diorite, flint): fairway = GColorLightGray, border = GColorBlack, ball = GColorBlack
+
+### Round Display (`#ifdef PBL_ROUND`)
+Chalk and gabbro are round displays. Play area is constrained:
+- `PW = 127`, `PH = 130` (fits within inscribed rectangle of round display)
+- All 18 hole coordinates fit within this (max x=126, max y=120)
 
 ## Course Data Structure
 ```c
 typedef struct {
-  GPoint tee;           // ball start position (screen coords)
-  GPoint cup;           // hole position (screen coords)
+  GPoint tee;           // ball start position (play area coords)
+  GPoint cup;           // hole position (play area coords)
   uint8_t par;          // 2 or 3
   uint8_t num_walls;    // number of wall segments
-  GPoint walls[20][2];  // wall segment endpoints [i][0]=start [i][1]=end
+  GPoint walls[12][2];  // wall segment endpoints [i][0]=start [i][1]=end
 } HoleData;
 ```
 
-Walls are line segments. The outer fairway boundary is also stored as wall segments.
-Each hole is defined in a static array in flash (not RAM).
+Walls are line segments. Boundary walls checked separately from hole walls.
+Each hole is defined in `static const HoleData s_holes[18]` — stored in flash.
 
 ## 18-Hole Course Design (hand-crafted)
-Screen play area: ~130×130px centered on 144×168 display (leaving room for HUD).
-HUD: top 16px (hole number, par, strokes so far); bottom 12px (mini scorecard dots).
+Play area: PW×PH (130×138 rect, 127×130 round). HUD: top 16px.
 
-Hole designs (increasing difficulty):
-1.  Straight shot — par 2, wide fairway, cup at far end
-2.  Slight dogleg right — par 2
-3.  Narrow corridor — par 2
-4.  L-shape — par 3, sharp 90° turn
-5.  Bumper in center — par 2, round obstacle to avoid
-6.  Island fairway — par 3, narrow bridge path
-7.  S-curve — par 3
-8.  Windmill/wall blocker — par 3, moving obstacle (AppTimer)
-9.  Long straight with side pocket — par 3
-10. Zigzag — par 3
-11. Boomerang shape — par 3
-12. Cross junction — par 3, fairway crosses itself
-13. Small green, long approach — par 3
-14. Pinball bumpers (2 round obstacles) — par 3
-15. Spiral approach — par 3
-16. Off-angle shot required — par 2
-17. Bank shot hole — par 2 (you must bounce off a wall)
-18. Grand finale — par 3, complex shape
+1.  Straight shot — par 2
+2.  One wall gap — par 2
+3.  Two wall gaps — par 2
+4.  Vertical wall dogleg — par 3
+5.  Two offset walls — par 2
+6.  S-curve (3 walls) — par 3
+7.  Vertical wall opposite side — par 3
+8.  Static + moving obstacle — par 3 (moving wall oscillates via AppTimer)
+9.  Diagonal wall — par 2
+10. Two diagonal walls — par 3
+11. Box obstacle (4 walls) — par 3
+12. Vertical wall mid-right — par 2
+13. Two offset walls — par 3
+14. Three staggered walls — par 3
+15. L-shape wall — par 2
+16. Two angled walls — par 3
+17. Four staircase walls — par 3
+18. S-curve grand finale (3 alternating walls) — par 3
 
 Total par for 18-hole course: 46
 
 ## Procedural 9-Hole Course
-Seed = `time(NULL)` XOR milliseconds at app launch.
+Seed = `time(NULL)` at app launch.
 Generation per hole:
-1. Place tee at random position in top-left quadrant of play area
-2. Place cup at random position in bottom-right quadrant (ensuring min distance 60px)
-3. Generate 2–4 random wall segments as obstacles (not blocking direct line to cup completely)
-4. Add outer boundary walls based on a randomly chosen fairway shape:
-   - Rectangle, L-shape, T-shape, or Z-shape
-5. Par: if distance tee→cup > 80px or 3+ obstacles → par 3, else par 2
+1. Tee in top-left quadrant, cup in bottom-right quadrant (min distance enforced)
+2. 1–3 random horizontal or vertical wall segments
+3. Par 3 if distance > ~78px or 3 walls, else par 2
+Cup y bounded to `rand_range(85, PH - 10)` for platform compatibility.
+
+## Persistent Storage Keys
+| Key | Purpose |
+|-----|---------|
+| 1   | Best 18-hole score |
+| 2   | Best 9-hole score |
+| 10  | Save exists flag |
+| 11  | Saved hole index |
+| 12  | Saved scores array |
+| 20  | Achievement: holes-in-one count |
+| 21  | Achievement: eagles count |
+| 22  | Achievement: under-par rounds count |
 
 ## File Structure
 ```
 Pebble-Mini-Golf/
-├── package.json          ← Pebble manifest
-├── wscript               ← Build script
-├── CLAUDE.md             ← This file
-├── Pebble-Mini-Golf.pbw  ← Compiled binary (updated after each build)
-└── src/
-    └── c/
-        └── main.c        ← All game code (~700 lines)
+├── package.json                 ← Pebble manifest (7 platforms)
+├── wscript                      ← Build script
+├── CLAUDE.md                    ← This file
+├── README.md                    ← GitHub readme
+├── Pebble-Mini-Golf.pbw         ← Compiled binary (updated after each build)
+├── resources/images/
+│   ├── gball_clean.png          ← 68×68 ball graphic (menu screen)
+│   ├── menu_icon.png            ← 25×25 launcher icon
+│   ├── icon_80x80.png           ← App store icon
+│   ├── icon_144x144.png         ← App store icon
+│   └── banner_720x320.png       ← App store banner
+└── src/c/
+    └── main.c                   ← All game code (~1160 lines)
 ```
 No JS needed (pure C game, no phone communication).
 
 ## Target Platforms
-- aplite (B&W, 144×168) — 24KB RAM, careful with data
+- aplite (B&W, 144×168) — 24KB RAM
 - basalt (color, 144×168)
+- chalk (color, 180×180 round) — `#ifdef PBL_ROUND` play area
 - diorite (B&W, 144×168)
-- emery (color, 200×228) — adjust play area to 180×180
+- emery (color, 200×228)
 - flint (B&W, 144×168)
+- gabbro (color, 260×260 round) — `#ifdef PBL_ROUND` play area
 
 ## Key Implementation Notes
-- All 18 hole definitions in `static const HoleData s_holes[18]` — stored in flash
 - Ball animation via `app_timer_register(50, ball_tick, NULL)` (20 fps)
 - Fixed-point: `#define FP 16` — multiply all positions/velocities by FP, divide to render
-- Wall collision: for each wall segment, check if ball crosses it this tick, reflect `vel` off wall normal
-- `graphics_fill_circle` for ball (r=3) and cup (r=4 with inner dot)
-- Procedural holes stored in `static HoleData s_proc_holes[9]` built at game start
-- Scorecard: `static int8_t s_scores[18]` (strokes per hole, -1 = not played yet)
+- Wall collision: dot-product reflection off wall normal, 7/8 energy retained
+- `graphics_fill_circle` for ball (r=3) and cup (r=5, white ring at r=3, black dot at r=1)
+- Procedural holes in `static HoleData s_proc_holes[9]` built at game start
+- Scorecard: `static int8_t s_scores[18]` (strokes per hole, -1 = not played)
+- Shot guide: 3 dots at distances {9, 21, 33}px, r=2, drawn in both AIM and POWER states
+- Fading hint strip: AppTimer at 120ms, HINT_FADE_STEPS=3, HINT_HOLD_STEPS=18
+- Bitmap tiling bug: `graphics_draw_bitmap_in_rect` tiles if rect ≠ bitmap size — always draw gball_clean at exactly 68×68
