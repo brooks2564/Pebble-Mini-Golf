@@ -563,28 +563,35 @@ static void draw_hole_intro(GContext *ctx, GRect bounds) {
   graphics_context_set_fill_color(ctx, GColorBlack);
   graphics_fill_rect(ctx, bounds, 0, GCornerNone);
 
-  int cy = bounds.size.h / 2;
-
-  char buf[20];
-  snprintf(buf, sizeof(buf), "Hole %d", s_current_hole + 1);
   graphics_context_set_text_color(ctx, GColorWhite);
-  graphics_draw_text(ctx, buf,
+
+  // "HOLE" on one line, number on the next — both fit at any width
+  char num_buf[4];
+  snprintf(num_buf, sizeof(num_buf), "%d", s_current_hole + 1);
+
+  graphics_draw_text(ctx, "HOLE",
     fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD),
-    GRect(0, cy - 52, bounds.size.w, 48),
+    GRect(0, 20, bounds.size.w, 48),
+    GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+
+  graphics_draw_text(ctx, num_buf,
+    fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD),
+    GRect(0, 66, bounds.size.w, 48),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
 #ifdef PBL_COLOR
   graphics_context_set_stroke_color(ctx, GColorChromeYellow);
   graphics_context_set_stroke_width(ctx, 2);
   graphics_draw_line(ctx,
-    GPoint(bounds.size.w/2 - 28, cy - 2),
-    GPoint(bounds.size.w/2 + 28, cy - 2));
+    GPoint(bounds.size.w/2 - 28, 116),
+    GPoint(bounds.size.w/2 + 28, 116));
 #endif
 
+  char buf[12];
   snprintf(buf, sizeof(buf), "Par  %d", s_cur_hole->par);
   graphics_draw_text(ctx, buf,
     fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
-    GRect(0, cy + 4, bounds.size.w, 28),
+    GRect(0, 120, bounds.size.w, 28),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
   graphics_draw_text(ctx, "SELECT to skip",
