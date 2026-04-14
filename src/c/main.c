@@ -393,16 +393,18 @@ static void draw_menu(GContext *ctx, GRect bounds) {
   graphics_context_set_fill_color(ctx, GColorBlack);
   graphics_fill_rect(ctx, bounds, 0, GCornerNone);
 
-  // Golf ball image (50x50, centred near top)
-  int ball_r  = 25;   // half of 50px image
-  int ball_cy = ball_r + 4;
+  // Golf ball image — centred between top of screen and "Mini Golf" title
+  int title_y  = 74;            // where "Mini Golf" text begins
+  int ball_size = 60;           // render size (bitmap scales to fit)
+  int ball_r    = ball_size / 2;
+  int ball_cy   = title_y / 2;  // vertical centre of the space above the title
 
   if (s_gball_bmp) {
     graphics_draw_bitmap_in_rect(ctx, s_gball_bmp,
-      GRect(cx - ball_r, ball_cy - ball_r, 50, 50));
+      GRect(cx - ball_r, ball_cy - ball_r, ball_size, ball_size));
   }
 
-  int y = ball_cy + ball_r + 5;
+  int y = title_y;
 
   // Title
   graphics_context_set_text_color(ctx, GColorWhite);
