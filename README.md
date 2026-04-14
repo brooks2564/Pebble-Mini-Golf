@@ -4,7 +4,7 @@ A fully playable mini golf game for your Pebble smartwatch — right on your wri
 
 ## About
 
-Take on 18 hand-crafted holes with increasing difficulty, or tee off on a randomly generated 9-hole course for something new every time. Aim your shot, dial in your power, and try to sink it in as few strokes as possible. Watch out — hit it too hard and the ball lips out of the cup, just like real golf! 🏌️
+Take on 18 hand-crafted holes with increasing difficulty, or tee off on a randomly generated 9-hole course for something new every time. Aim your shot, dial in your power, and try to sink it in as few strokes as possible. Watch out — hit it too hard and the ball lips out of the cup, just like real golf!
 
 ## Features
 
