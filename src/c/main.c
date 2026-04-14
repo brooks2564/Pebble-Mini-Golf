@@ -394,10 +394,11 @@ static void draw_menu(GContext *ctx, GRect bounds) {
   graphics_fill_rect(ctx, bounds, 0, GCornerNone);
 
   // Golf ball image — centred between top of screen and "Mini Golf" title
-  int title_y  = 74;            // where "Mini Golf" text begins
-  int ball_size = 60;           // render size (bitmap scales to fit)
+  // IMPORTANT: draw size must exactly match bitmap size (68x68) or Pebble tiles it
+  int title_y  = 74;
+  int ball_size = 68;
   int ball_r    = ball_size / 2;
-  int ball_cy   = title_y / 2;  // vertical centre of the space above the title
+  int ball_cy   = title_y / 2;  // vertical centre of space above title
 
   if (s_gball_bmp) {
     graphics_draw_bitmap_in_rect(ctx, s_gball_bmp,
