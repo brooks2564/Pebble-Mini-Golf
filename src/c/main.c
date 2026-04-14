@@ -684,7 +684,7 @@ static void draw_shot_guide(GContext *ctx) {
     int dot_y = by - d * cos_a / 100;
     if (dot_x >= s_px + 1 && dot_x < s_px + PW - 1 &&
         dot_y >= s_py + 1 && dot_y < s_py + PH - 1) {
-      graphics_draw_pixel(ctx, GPoint(dot_x, dot_y));
+      graphics_fill_circle(ctx, GPoint(dot_x, dot_y), 1);
     }
   }
 }
@@ -781,7 +781,7 @@ static void layer_update(Layer *layer, GContext *ctx) {
         GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
       break;
     case STATE_POWER:
-      draw_arrow(ctx);
+      draw_shot_guide(ctx);
       draw_power_bar(ctx, bounds);
       graphics_context_set_text_color(ctx, GColorWhite);
       graphics_draw_text(ctx, "POWER  UP/DN=adj  SEL=shoot",
