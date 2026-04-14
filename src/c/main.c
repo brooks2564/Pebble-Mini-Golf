@@ -677,8 +677,8 @@ static void draw_shot_guide(GContext *ctx) {
 #endif
 
   // 5 dots at 60% of original distances (reduced by 40%)
-  static const int dists[] = { 9, 15, 21, 27, 33 };
-  for (int i = 0; i < 5; i++) {
+  static const int dists[] = { 9, 21, 33 };
+  for (int i = 0; i < 3; i++) {
     int d     = dists[i];
     int dot_x = bx + d * sin_a / 100;
     int dot_y = by - d * cos_a / 100;
