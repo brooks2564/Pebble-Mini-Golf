@@ -28,6 +28,10 @@
 #define PKEY_SAVE_EXISTS 10
 #define PKEY_SAVE_HOLE   11
 #define PKEY_SAVE_SCORES 12
+// Achievement keys
+#define PKEY_ACH_HIO       20
+#define PKEY_ACH_EAGLES    21
+#define PKEY_ACH_UNDER_PAR 22
 
 // ---- Types ----
 typedef enum {
@@ -157,12 +161,20 @@ static int s_px, s_py;
 // Persistent
 static int  s_best_18, s_best_9;
 static bool s_has_save;
+// Achievements
+static int  s_ach_hio, s_ach_eagles, s_ach_under_par;
 
 // ---- Haptic patterns ----
 static const uint32_t s_bounce_segs[] = { 20 };
 static const VibePattern s_bounce_pat = {
   .durations    = s_bounce_segs,
   .num_segments = ARRAY_LENGTH(s_bounce_segs),
+};
+// Hole-in-one: three celebratory pulses
+static const uint32_t s_hio_segs[] = { 150, 80, 150, 80, 300 };
+static const VibePattern s_hio_pat = {
+  .durations    = s_hio_segs,
+  .num_segments = ARRAY_LENGTH(s_hio_segs),
 };
 
 // ---- Helpers ----
@@ -192,9 +204,12 @@ static void get_hole8_wall(GPoint *w1, GPoint *w2) {
 
 // ---- Persistent Storage ----
 static void load_persistent_data(void) {
-  s_best_18  = persist_read_int(PKEY_BEST_18);
-  s_best_9   = persist_read_int(PKEY_BEST_9);
-  s_has_save = persist_read_bool(PKEY_SAVE_EXISTS);
+  s_best_18      = persist_read_int(PKEY_BEST_18);
+  s_best_9       = persist_read_int(PKEY_BEST_9);
+  s_has_save     = persist_read_bool(PKEY_SAVE_EXISTS);
+  s_ach_hio      = persist_read_int(PKEY_ACH_HIO);
+  s_ach_eagles   = persist_read_int(PKEY_ACH_EAGLES);
+  s_ach_under_par = persist_read_int(PKEY_ACH_UNDER_PAR);
 }
 
 static void save_game_progress(void) {
@@ -213,9 +228,17 @@ static void clear_saved_game(void) {
 }
 
 static void check_and_save_best(void) {
-  int total = 0;
-  for (int i = 0; i < s_total_holes; i++)
+  int total = 0, total_par = 0;
+  for (int i = 0; i < s_total_holes; i++) {
+    const HoleData *h = s_random_mode ? &s_proc_holes[i] : &s_holes[i];
     if (s_scores[i] >= 0) total += s_scores[i];
+    total_par += h->par;
+  }
+  // Achievement: under-par round
+  if (total < total_par) {
+    s_ach_under_par++;
+    persist_write_int(PKEY_ACH_UNDER_PAR, s_ach_under_par);
+  }
   if (s_random_mode) {
     if (s_best_9 == 0 || total < s_best_9) {
       s_best_9 = total;
@@ -400,7 +423,19 @@ static void ball_tick(void *context) {
       // Ball drops in
       s_scores[s_current_hole] = (int8_t)s_strokes;
       s_state = STATE_HOLE_OUT;
-      vibes_long_pulse();
+      // Haptic + achievement tracking
+      int diff = s_strokes - (int)s_cur_hole->par;
+      if (s_strokes == 1) {
+        s_ach_hio++;
+        persist_write_int(PKEY_ACH_HIO, s_ach_hio);
+        vibes_enqueue_custom_pattern(s_hio_pat);
+      } else if (diff <= -2) {
+        s_ach_eagles++;
+        persist_write_int(PKEY_ACH_EAGLES, s_ach_eagles);
+        vibes_double_pulse();
+      } else {
+        vibes_long_pulse();
+      }
       layer_mark_dirty(s_layer);
       return;
     }
@@ -537,6 +572,28 @@ static void draw_menu(GContext *ctx, GRect bounds) {
     GRect(4, y, bounds.size.w - 8, 16),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
   y += 16;
+
+  // Achievements line (only if player has earned any)
+  if (s_ach_hio > 0 || s_ach_eagles > 0 || s_ach_under_par > 0) {
+    char ach_buf[36];
+    if (s_ach_hio > 0 && s_ach_eagles > 0)
+      snprintf(ach_buf, sizeof(ach_buf), "Aces:%d Egl:%d Under:%d",
+               s_ach_hio, s_ach_eagles, s_ach_under_par);
+    else if (s_ach_hio > 0)
+      snprintf(ach_buf, sizeof(ach_buf), "Aces:%d  Under par:%d",
+               s_ach_hio, s_ach_under_par);
+    else
+      snprintf(ach_buf, sizeof(ach_buf), "Eagles:%d  Under par:%d",
+               s_ach_eagles, s_ach_under_par);
+#ifdef PBL_COLOR
+    graphics_context_set_text_color(ctx, GColorChromeYellow);
+#endif
+    graphics_draw_text(ctx, ach_buf,
+      fonts_get_system_font(FONT_KEY_GOTHIC_14),
+      GRect(4, y, bounds.size.w - 8, 16),
+      GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+    y += 16;
+  }
 
   graphics_context_set_text_color(ctx, GColorWhite);
 
@@ -696,15 +753,23 @@ static void draw_scorecard(GContext *ctx, GRect bounds) {
     }
   }
 
-  // Total line
+  // Total line with vs-par diff
   bool is_best = s_random_mode
     ? (s_best_9  > 0 && total_strokes == s_best_9)
     : (s_best_18 > 0 && total_strokes == s_best_18);
+  int  round_diff = total_strokes - total_par;
+  char diff_str[8];
+  if (round_diff == 0)      snprintf(diff_str, sizeof(diff_str), "E");
+  else if (round_diff > 0)  snprintf(diff_str, sizeof(diff_str), "+%d", round_diff);
+  else                      snprintf(diff_str, sizeof(diff_str), "%d", round_diff);
   char total_buf[32];
-  snprintf(total_buf, sizeof(total_buf), "Total %d  Par %d%s",
-           total_strokes, total_par, is_best ? " BEST!" : "");
+  snprintf(total_buf, sizeof(total_buf), "Total %d  %s%s",
+           total_strokes, diff_str, is_best ? " BEST!" : "");
 #ifdef PBL_COLOR
-  graphics_context_set_text_color(ctx, is_best ? GColorChromeYellow : GColorWhite);
+  GColor total_col = is_best ? GColorChromeYellow :
+                     (round_diff < 0) ? GColorGreen :
+                     (round_diff > 0) ? GColorRed : GColorWhite;
+  graphics_context_set_text_color(ctx, total_col);
 #else
   graphics_context_set_text_color(ctx, GColorWhite);
 #endif
@@ -901,11 +966,23 @@ static void draw_hole_out_overlay(GContext *ctx, GRect bounds) {
     GRect(ox+4, oy+28, ow-8, 18),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
+  // Score term — color-coded by performance
+  int  hod = s_strokes - (int)s_cur_hole->par;
+  bool is_hio = (s_strokes == 1);
+#ifdef PBL_COLOR
+  GColor term_col = GColorWhite;
+  if (is_hio)       term_col = GColorChromeYellow;
+  else if (hod <= -2) term_col = GColorGreen;
+  else if (hod == -1) term_col = GColorGreen;
+  else if (hod >= 1)  term_col = GColorRed;
+  graphics_context_set_text_color(ctx, term_col);
+#endif
   graphics_draw_text(ctx, score_term(s_strokes, s_cur_hole->par),
-    fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
-    GRect(ox+4, oy+48, ow-8, 22),
+    fonts_get_system_font(is_hio ? FONT_KEY_GOTHIC_24_BOLD : FONT_KEY_GOTHIC_18_BOLD),
+    GRect(ox+4, oy+46, ow-8, 26),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
+  graphics_context_set_text_color(ctx, GColorWhite);
   graphics_draw_text(ctx, "SELECT to continue",
     fonts_get_system_font(FONT_KEY_GOTHIC_14),
     GRect(ox+4, oy+70, ow-8, 18),
