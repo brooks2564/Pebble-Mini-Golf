@@ -152,6 +152,11 @@ static int s_angle, s_power;
 // Animation frame (drives moving obstacle on hole 8)
 static int s_anim_frame;
 
+// Touch drag state
+static bool s_touch_aim_drag;
+static bool s_touch_power_drag;
+static int  s_touch_prev_y;
+
 // Procedural holes
 static HoleData s_proc_holes[9];
 
@@ -370,7 +375,7 @@ static void anim_tick(void *context) {
 static void intro_timer_cb(void *context) {
   s_intro_timer = NULL;
   s_state = STATE_AIM;
-  start_hint("UP/DN: rotate aim", "SEL: lock direction");
+  start_hint("Drag tip / UP-DN: aim", "Tap ball / SEL: power");
   layer_mark_dirty(s_layer);
 }
 
@@ -451,7 +456,7 @@ static void ball_tick(void *context) {
       vibes_double_pulse();
     } else {
       s_state = STATE_AIM;
-      start_hint("UP/DN: rotate aim", "SEL: lock direction");
+      start_hint("Drag tip / UP-DN: aim", "Tap ball / SEL: power");
     }
     layer_mark_dirty(s_layer);
     return;
@@ -875,11 +880,15 @@ static void draw_arrow(GContext *ctx) {
   int dy = (int)(-ARROW_LEN * cos_lookup(ta) / TRIG_MAX_RATIO);
 #ifdef PBL_COLOR
   graphics_context_set_stroke_color(ctx, GColorChromeYellow);
+  graphics_context_set_fill_color(ctx, GColorChromeYellow);
 #else
   graphics_context_set_stroke_color(ctx, GColorBlack);
+  graphics_context_set_fill_color(ctx, GColorBlack);
 #endif
   graphics_context_set_stroke_width(ctx, 2);
   graphics_draw_line(ctx, GPoint(bx, by), GPoint(bx + dx, by + dy));
+  // Drag handle at arrow tip
+  graphics_fill_circle(ctx, GPoint(bx + dx, by + dy), 4);
 }
 
 // Dotted shot guide line in aim phase
@@ -987,6 +996,108 @@ static void draw_hole_out_overlay(GContext *ctx, GRect bounds) {
     fonts_get_system_font(FONT_KEY_GOTHIC_14),
     GRect(ox+4, oy+70, ow-8, 18),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+}
+
+// Integer atan2: returns 0-359 degrees, 0=north/up, clockwise.
+// Maps (dx, dy) in screen coords (y grows down) to game angle.
+static int touch_angle_from_delta(int dx, int dy) {
+  int neg_dy = -dy;
+  if (dx == 0 && neg_dy == 0) return s_angle;
+  int abs_dx  = dx     < 0 ? -dx     : dx;
+  int abs_ndy = neg_dy < 0 ? -neg_dy : neg_dy;
+  int angle;
+  if (abs_ndy >= abs_dx) {
+    angle = (abs_ndy > 0) ? (45 * abs_dx / abs_ndy) : 0;
+  } else {
+    angle = 90 - (45 * abs_ndy / abs_dx);
+  }
+  if (neg_dy >= 0) {
+    if (dx < 0) angle = 360 - angle;
+  } else {
+    angle = (dx >= 0) ? (180 - angle) : (180 + angle);
+  }
+  return angle % 360;
+}
+
+static void fire_shot(void) {
+  s_strokes++;
+  int32_t ta = DEG_TO_TRIGANGLE(s_angle);
+  int32_t v0 = (int32_t)s_power * 4;
+  s_vx = v0 * sin_lookup(ta)  / TRIG_MAX_RATIO;
+  s_vy = -v0 * cos_lookup(ta) / TRIG_MAX_RATIO;
+  s_state = STATE_ROLLING;
+  if (s_ball_timer) app_timer_cancel(s_ball_timer);
+  s_ball_timer = app_timer_register(TIMER_MS, ball_tick, NULL);
+  layer_mark_dirty(s_layer);
+}
+
+static void touch_handler(const TouchEvent *event, void *context) {
+  if (s_state != STATE_AIM && s_state != STATE_POWER) return;
+
+  int tx = event->x, ty = event->y;
+  int bx = (int)(s_bx / FP) + s_px;
+  int by = (int)(s_by / FP) + s_py;
+
+  // Arrow tip position
+  int32_t ta = DEG_TO_TRIGANGLE(s_angle);
+  int tip_x = bx + (int)(ARROW_LEN * sin_lookup(ta)  / TRIG_MAX_RATIO);
+  int tip_y = by + (int)(-ARROW_LEN * cos_lookup(ta) / TRIG_MAX_RATIO);
+
+  // Power bar bounds (matches draw_power_bar)
+  GRect bounds = layer_get_bounds(s_layer);
+  int bar_w = 8, bar_x = bounds.size.w - bar_w - 2;
+  int bar_y = s_py + 8, bar_h = PH - 16;
+
+  switch (event->type) {
+    case TouchEvent_Touchdown: {
+      s_touch_aim_drag   = false;
+      s_touch_power_drag = false;
+
+      int adx = tx - tip_x, ady = ty - tip_y;
+      int bdx = tx - bx,    bdy = ty - by;
+      bool near_tip  = (adx*adx + ady*ady) <= 196; // 14px radius
+      bool near_ball = (bdx*bdx + bdy*bdy) <= 144; // 12px radius
+      bool on_bar    = (tx >= bar_x - 8 && ty >= bar_y && ty <= bar_y + bar_h);
+
+      if (s_state == STATE_AIM) {
+        if (near_tip) {
+          s_touch_aim_drag = true;
+        } else if (near_ball) {
+          // Tap ball in aim → advance to power phase
+          s_state = STATE_POWER;
+          start_hint("Drag bar / UP-DN: pwr", "Tap ball / SEL: shoot");
+          layer_mark_dirty(s_layer);
+        }
+      } else if (s_state == STATE_POWER) {
+        if (near_ball) {
+          fire_shot();
+        } else if (on_bar) {
+          s_touch_power_drag = true;
+          s_touch_prev_y = ty;
+        }
+      }
+      break;
+    }
+    case TouchEvent_PositionUpdate: {
+      if (s_state == STATE_AIM && s_touch_aim_drag) {
+        s_angle = touch_angle_from_delta(tx - bx, ty - by);
+        layer_mark_dirty(s_layer);
+      } else if (s_state == STATE_POWER && s_touch_power_drag) {
+        int delta = s_touch_prev_y - ty; // drag up → more power
+        s_touch_prev_y = ty;
+        s_power += delta;
+        if (s_power < 0)   s_power = 0;
+        if (s_power > 100) s_power = 100;
+        layer_mark_dirty(s_layer);
+      }
+      break;
+    }
+    case TouchEvent_Liftoff: {
+      s_touch_aim_drag   = false;
+      s_touch_power_drag = false;
+      break;
+    }
+  }
 }
 
 static void layer_update(Layer *layer, GContext *ctx) {
@@ -1116,25 +1227,17 @@ static void select_handler(ClickRecognizerRef ref, void *ctx) {
       // Skip countdown, go straight to aim
       if (s_intro_timer) { app_timer_cancel(s_intro_timer); s_intro_timer = NULL; }
       s_state = STATE_AIM;
-      start_hint("UP/DN: rotate aim", "SEL: lock direction");
+      start_hint("Drag tip / UP-DN: aim", "Tap ball / SEL: power");
       layer_mark_dirty(s_layer);
       break;
     case STATE_AIM:
       s_state = STATE_POWER;
-      start_hint("UP/DN: adjust power", "SEL: shoot");
+      start_hint("Drag bar / UP-DN: pwr", "Tap ball / SEL: shoot");
       layer_mark_dirty(s_layer);
       break;
-    case STATE_POWER: {
-      s_strokes++;
-      int32_t ta = DEG_TO_TRIGANGLE(s_angle);
-      int32_t v0 = (int32_t)s_power * 4;
-      s_vx = v0 * sin_lookup(ta) / TRIG_MAX_RATIO;
-      s_vy = -v0 * cos_lookup(ta) / TRIG_MAX_RATIO;
-      s_state = STATE_ROLLING;
-      if (s_ball_timer) { app_timer_cancel(s_ball_timer); }
-      s_ball_timer = app_timer_register(TIMER_MS, ball_tick, NULL);
+    case STATE_POWER:
+      fire_shot();
       break;
-    }
     case STATE_HOLE_OUT:
       s_current_hole++;
       if (s_current_hole >= s_total_holes) {
@@ -1158,7 +1261,7 @@ static void back_handler(ClickRecognizerRef ref, void *ctx) {
   switch (s_state) {
     case STATE_POWER:
       s_state = STATE_AIM;
-      start_hint("UP/DN: rotate aim", "SEL: lock direction");
+      start_hint("Drag tip / UP-DN: aim", "Tap ball / SEL: power");
       layer_mark_dirty(s_layer);
       break;
     case STATE_HOLE_INTRO:
@@ -1203,9 +1306,12 @@ static void window_load(Window *window) {
 
   s_state = STATE_MENU;
   s_ball_timer = s_anim_timer = s_intro_timer = NULL;
+  s_touch_aim_drag = s_touch_power_drag = false;
+  touch_service_subscribe(touch_handler, NULL);
 }
 
 static void window_unload(Window *window) {
+  touch_service_unsubscribe();
   cancel_timers();
   layer_destroy(s_layer);
   if (s_gball_bmp) { gbitmap_destroy(s_gball_bmp); s_gball_bmp = NULL; }
