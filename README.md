@@ -1,8 +1,8 @@
-# ⛳ Pebble Mini Golf
+# ⛳ Pebble Mini Golf... Now with Touch Controls
 
-A fully playable mini golf game for Pebble smartwatches.
+A fully playable mini golf game for Pebble smartwatches — now with full touch screen support on Pebble Time 2 and other touch-enabled models.
 
-Take on 18 hand-crafted holes or a randomly generated 9-hole course. Sink it in as few strokes as possible — hit too hard and the ball lips out, just like real golf.
+Take on 18 hand-crafted holes or a randomly generated 9-hole course. Drag to aim, drag to set power, tap SHOOT — or use the buttons if you prefer. Sink it in as few strokes as possible — hit too hard and the ball lips out, just like real golf.
 
 ## Features
 
