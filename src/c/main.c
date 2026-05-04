@@ -1074,31 +1074,25 @@ static void touch_handler(const TouchEvent *event, void *context) {
       bool on_field  = (tx >= s_px && tx < s_px + PW &&
                         ty >= s_py && ty < s_py + PH);
 
-      if (s_state == STATE_AIM) {
-        if (on_button) {
-          s_state = STATE_POWER;
-          start_hint("Drag bar / UP-DN: pwr", "SHOOT button / SEL: fire");
-          layer_mark_dirty(s_layer);
-        } else if (on_field) {
-          s_touch_aim_drag = true;
-          s_angle = touch_angle_from_delta(tx - bx, ty - by);
-          layer_mark_dirty(s_layer);
-        }
-      } else if (s_state == STATE_POWER) {
+      if (s_state == STATE_AIM || s_state == STATE_POWER) {
         if (on_button) {
           fire_shot();
         } else if (on_bar) {
           s_touch_power_drag = true;
           s_touch_prev_y = ty;
+        } else if (on_field) {
+          s_touch_aim_drag = true;
+          s_angle = touch_angle_from_delta(tx - bx, ty - by);
+          layer_mark_dirty(s_layer);
         }
       }
       break;
     }
     case TouchEvent_PositionUpdate: {
-      if (s_state == STATE_AIM && s_touch_aim_drag) {
+      if (s_touch_aim_drag) {
         s_angle = touch_angle_from_delta(tx - bx, ty - by);
         layer_mark_dirty(s_layer);
-      } else if (s_state == STATE_POWER && s_touch_power_drag) {
+      } else if (s_touch_power_drag) {
         int delta = s_touch_prev_y - ty; // drag up → more power
         s_touch_prev_y = ty;
         s_power += delta;
@@ -1132,13 +1126,9 @@ static void layer_update(Layer *layer, GContext *ctx) {
 
   switch (s_state) {
     case STATE_AIM:
-      draw_shot_guide(ctx);
-      draw_arrow(ctx);
-      draw_top_button(ctx, bounds, "SET POWER");
-      draw_hint(ctx, bounds);
-      break;
     case STATE_POWER:
       draw_shot_guide(ctx);
+      draw_arrow(ctx);
       draw_power_bar(ctx, bounds);
       draw_top_button(ctx, bounds, "SHOOT!");
       draw_hint(ctx, bounds);
