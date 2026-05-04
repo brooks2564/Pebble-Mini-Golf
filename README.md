@@ -1,38 +1,44 @@
 # ⛳ Pebble Mini Golf
 
-A fully playable mini golf game for your Pebble smartwatch — right on your wrist!
+A fully playable mini golf game for Pebble smartwatches.
 
-## About
-
-Take on 18 hand-crafted holes with increasing difficulty, or tee off on a randomly generated 9-hole course for something new every time. Aim your shot, dial in your power, and try to sink it in as few strokes as possible. Watch out — hit it too hard and the ball lips out of the cup, just like real golf!
+Take on 18 hand-crafted holes or a randomly generated 9-hole course. Sink it in as few strokes as possible — hit too hard and the ball lips out, just like real golf.
 
 ## Features
 
-- **18-hole course** — hand-crafted holes ranging from simple straights to tricky doglegs, bumpers, and moving obstacles
-- **Random 9-hole course** — procedurally generated every round so no two games are the same
-- **Realistic physics** — fixed-point ball movement, wall bounces, friction, and lip-out on hard putts
-- **Scorecard** — tracks every hole with a clean two-column layout and your total vs par
-- **Best score tracking** — your best round is saved and shown on the home screen
-- **Save & resume** — quit mid-round and pick up right where you left off
-- **Haptic feedback** — feel every bounce and hole-in on your wrist
+- **18-hole course** — straights, doglegs, bumpers, and a moving obstacle on hole 8
+- **Random 9-hole course** — procedurally generated every round
+- **Realistic physics** — bounces, friction, and lip-out on hard putts
+- **Scorecard** — hole-by-hole results with total vs par
+- **Best score tracking** — saved across sessions
+- **Save & resume** — quit mid-round and pick up where you left off
+- **Haptic feedback** — feel every bounce and hole-out
+- **Achievements** — holes-in-one, eagles, and under-par rounds tracked
 
 ## Controls
 
-Aim Phase:
-  UP     - Rotate aim clockwise
-  DOWN   - Rotate aim counter-clockwise
-  SELECT - Lock direction
-  BACK   - Return to menu
+**Touchscreen (Pebble Time 2 and other touch models):**
 
-Power Phase:
-  UP     - Increase power
-  DOWN   - Decrease power
-  SELECT - Shoot
-  BACK   - Back to aim
+| Action | How |
+|--------|-----|
+| Aim | Drag anywhere on the green |
+| Set power | Drag the power bar on the right |
+| Shoot | Tap the **SHOOT!** button |
+
+**Buttons (all models):**
+
+| Phase | Button | Action |
+|-------|--------|--------|
+| Aim | UP / DOWN | Rotate aim |
+| Aim | SELECT | Lock aim → set power |
+| Aim | BACK | Return to menu |
+| Power | UP / DOWN | Adjust power |
+| Power | SELECT | Shoot |
+| Power | BACK | Back to aim |
 
 ## Platforms
 
-Supports all Pebble models: Aplite, Basalt, Diorite, Emery, and Flint.
+Aplite · Basalt · Chalk · Diorite · Emery · Flint · Gabbro
 
 ---
 
