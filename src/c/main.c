@@ -940,20 +940,22 @@ static void draw_power_bar(GContext *ctx, GRect bounds) {
   graphics_draw_rect(ctx, GRect(bar_x, bar_y, bar_w, bar_h));
 }
 
-static void draw_shoot_button(GContext *ctx, GRect bounds) {
+#define BTN_Y   (HUD_H + 4)
+#define BTN_H   24
+#define BTN_W   72
+
+static void draw_top_button(GContext *ctx, GRect bounds, const char *label) {
   int cx = bounds.size.w / 2;
-  int by = s_py + PH + 2;
-  GRect btn = GRect(cx - 36, by, 72, 24);
 #ifdef PBL_COLOR
   graphics_context_set_fill_color(ctx, GColorChromeYellow);
 #else
   graphics_context_set_fill_color(ctx, GColorWhite);
 #endif
-  graphics_fill_rect(ctx, btn, 4, GCornersAll);
+  graphics_fill_rect(ctx, GRect(cx - BTN_W/2, BTN_Y, BTN_W, BTN_H), 4, GCornersAll);
   graphics_context_set_text_color(ctx, GColorBlack);
-  graphics_draw_text(ctx, "SHOOT!",
+  graphics_draw_text(ctx, label,
     fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
-    GRect(cx - 36, by + 2, 72, 20),
+    GRect(cx - BTN_W/2, BTN_Y + 2, BTN_W, BTN_H - 4),
     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 }
 
@@ -1065,20 +1067,25 @@ static void touch_handler(const TouchEvent *event, void *context) {
       s_touch_aim_drag   = false;
       s_touch_power_drag = false;
 
-      bool on_bar     = (tx >= bar_x - 8 && ty >= bar_y && ty <= bar_y + bar_h);
-      bool on_shoot   = (ty >= s_py + PH + 2 && ty <= s_py + PH + 26 &&
-                         tx >= bounds.size.w / 2 - 36 && tx <= bounds.size.w / 2 + 36);
-      bool on_field   = (tx >= s_px && tx < s_px + PW &&
-                         ty >= s_py && ty < s_py + PH);
+      int cx = bounds.size.w / 2;
+      bool on_bar    = (tx >= bar_x - 8 && ty >= bar_y && ty <= bar_y + bar_h);
+      bool on_button = (ty >= BTN_Y && ty <= BTN_Y + BTN_H &&
+                        tx >= cx - BTN_W/2 && tx <= cx + BTN_W/2);
+      bool on_field  = (tx >= s_px && tx < s_px + PW &&
+                        ty >= s_py && ty < s_py + PH);
 
       if (s_state == STATE_AIM) {
-        if (on_field) {
+        if (on_button) {
+          s_state = STATE_POWER;
+          start_hint("Drag bar / UP-DN: pwr", "SHOOT button / SEL: fire");
+          layer_mark_dirty(s_layer);
+        } else if (on_field) {
           s_touch_aim_drag = true;
           s_angle = touch_angle_from_delta(tx - bx, ty - by);
           layer_mark_dirty(s_layer);
         }
       } else if (s_state == STATE_POWER) {
-        if (on_shoot) {
+        if (on_button) {
           fire_shot();
         } else if (on_bar) {
           s_touch_power_drag = true;
@@ -1127,12 +1134,13 @@ static void layer_update(Layer *layer, GContext *ctx) {
     case STATE_AIM:
       draw_shot_guide(ctx);
       draw_arrow(ctx);
+      draw_top_button(ctx, bounds, "SET POWER");
       draw_hint(ctx, bounds);
       break;
     case STATE_POWER:
       draw_shot_guide(ctx);
       draw_power_bar(ctx, bounds);
-      draw_shoot_button(ctx, bounds);
+      draw_top_button(ctx, bounds, "SHOOT!");
       draw_hint(ctx, bounds);
       break;
     case STATE_HOLE_OUT:
